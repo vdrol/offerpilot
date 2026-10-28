@@ -1,5 +1,7 @@
 # OfferPilot — your multi-agent job application copilot
 
+**Live demo:** https://offerpilot-6bxr.onrender.com (free tier: first load may take ~50s to wake)
+
 **Track:** Best Apps and Agents · **LLM:** NVIDIA Nemotron on **Nebius Token Factory** · **Search:** Tavily
 
 Job seekers send dozens of applications, and every one deserves a tailored resume, a specific cover letter and

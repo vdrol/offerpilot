@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Veritas Fact Checker</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6573; --line: #e3e6eb;
+    --accent: #76b900; --accent-ink: #1d2b00;
+    --true: #1f9d55; --mostly-true: #5fae2e; --mixed: #d69e00; --mostly-false: #e07a1f; --false: #d64545; --unv: #7a8394;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1013; --panel: #171a1f; --ink: #e8eaee; --muted: #9aa2b0; --line: #2a2f37; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 80px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  .tag { color: var(--muted); font-size: 13px; }
+  .lede { color: var(--muted); margin: 6px 0 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs button { background: none; border: 1px solid var(--line); color: var(--muted); padding: 6px 14px;
+    border-radius: 999px; cursor: pointer; font: inherit; }
+  .tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  textarea, input[type=url] { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 12px; font: inherit; }
+  textarea { min-height: 150px; resize: vertical; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .go { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 650; padding: 10px 20px;
+    border-radius: 8px; cursor: pointer; font-size: 15px; }
+  .go:disabled { opacity: .5; cursor: wait; }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }
+  .status { font-size: 13px; color: var(--muted); margin-left: auto; }
+  .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 22px 0; }
+  .step { font-size: 12px; text-align: center; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--line);
+    color: var(--muted); background: var(--panel); }
+  .step b { display: block; font-size: 13px; color: var(--ink); }
+  .step.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
+  .step.done { border-color: var(--accent); }
+  .step.done b::after { content: " ✓"; color: var(--accent); }
+  #report { display: none; margin-bottom: 18px; }
+  .report-grid { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  .score { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    font-size: 28px; font-weight: 700; }
+  .score small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); text-align: center; }
+  .report-text { flex: 1; min-width: 240px; }
+  .report-text h2 { margin: 0 0 6px; font-size: 19px; }
+  .report-text p { margin: 4px 0; }
+  .advice { color: var(--muted); font-style: italic; }
+  .claim { margin-bottom: 12px; }
+  .claim-head { display: flex; gap: 12px; align-items: flex-start; }
+  .claim-text { flex: 1; font-weight: 600; }
+  .badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; color: #fff; white-space: nowrap;
+    letter-spacing: .03em; }
+  .pending { background: var(--line); color: var(--muted); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .expl { margin: 10px 0 6px; }
+  .correction { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0; font-size: 14px; }
+  .sources { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; }
+  .sources li { margin: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sources a { color: var(--muted); }
+  .sources li.cited a { color: var(--ink); font-weight: 600; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 10%; transition: width .4s; }
+  .err { color: var(--false); margin-top: 12px; }
+  footer { margin-top: 40px; color: var(--muted); font-size: 12px; text-align: center; }
+  @media (max-width: 600px) { .pipeline { grid-template-columns: repeat(3, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Veri<span>tas</span></h1>
+    <span class="tag" id="model">Nemotron on Nebius Token Factory · Tavily search</span>
+  </header>
+  <p class="lede">Paste a post, article or transcript. A team of AI agents pulls out every factual claim, searches the live web for evidence, and tells you what's true, what's false, and why — with sources.</p>
+
+  <section class="panel">
+    <div class="tabs">
+      <button class="on" data-mode="text">Paste text</button>
+      <button data-mode="url">Article URL</button>
+    </div>
+    <textarea id="text" placeholder="Paste text to fact-check…"></textarea>
+    <input id="url" type="url" placeholder="https://…" style="display:none">
+    <div class="row">
+      <button class="go" id="go">Fact-check</button>
+      <button class="link" id="sample">Try a sample</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="err" id="err"></div>
+  </section>
+
+  <div class="pipeline" id="pipeline">
+    <div class="step" data-s="extract"><b>Extractor</b>finds claims</div>
+    <div class="step" data-s="plan"><b>Planner</b>writes queries</div>
+    <div class="step" data-s="search"><b>Researcher</b>Tavily search</div>
+    <div class="step" data-s="verify"><b>Verifier</b>judges evidence</div>
+    <div class="step" data-s="report"><b>Editor</b>writes report</div>
+  </div>
+
+  <section class="panel" id="report"></section>
+  <section id="claims"></section>
+
+  <footer>Built for the NVIDIA × Nebius hackathon · NVIDIA Nemotron via Nebius Token Factory · MIT licensed</footer>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const COLORS = { TRUE: "var(--true)", MOSTLY_TRUE: "var(--mostly-true)", MIXED: "var(--mixed)",
+  MOSTLY_FALSE: "var(--mostly-false)", FALSE: "var(--false)", UNVERIFIABLE: "var(--unv)" };
+const STAGE_PCT = { queued: 8, planning: 25, searching: 55, verifying: 80 };
+const SAMPLE = `Scientists confirmed this week that the Great Wall of China is the only man-made structure visible from the Moon with the naked eye. The wall stretches over 21,000 km and was completed in a single dynasty. Meanwhile, Mount Everest, at 8,849 metres, remains the tallest mountain above sea level. Experts also remind us that humans only use 10% of their brains, and that Albert Einstein failed math in school.`;
+let mode = "text";
+
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+  $("#text").style.display = mode === "text" ? "" : "none";
+  $("#url").style.display = mode === "url" ? "" : "none";
+});
+$("#sample").onclick = () => { document.querySelector('[data-mode="text"]').click(); $("#text").value = SAMPLE; };
+
+fetch("/api/health").then((r) => r.json()).then((h) => {
+  if (h.model) $("#model").textContent = `${h.model} on Nebius Token Factory · Tavily search` + (h.mock_mode ? " (mock mode)" : "");
+}).catch(() => {});
+
+function setStep(name, state) {
+  const el = document.querySelector(`.step[data-s="${name}"]`);
+  if (!el) return;
+  el.classList.remove("active", "done");
+  if (state) el.classList.add(state);
+}
+
+function claimCard(c) {
+  return `<article class="panel claim" id="c${c.id}">
+    <div class="claim-head"><div class="claim-text">${esc(c.claim)}</div><span class="badge pending">QUEUED</span></div>
+    ${c.quote ? `<div class="meta">“${esc(c.quote)}”</div>` : ""}
+    <div class="body"><div class="bar"><i></i></div><div class="meta stage">Waiting for an agent…</div></div>
+  </article>`;
+}
+
+function updateClaim(ev) {
+  const el = $(`#c${ev.id}`); if (!el) return;
+  el.querySelector(".badge").textContent = ev.stage.toUpperCase();
+  el.querySelector(".bar i").style.width = STAGE_PCT[ev.stage] + "%";
+  const msg = { planning: "Query Planner is writing search queries…",
+    searching: "Researcher is searching: " + (ev.queries || []).map((q) => `“${esc(q)}”`).join(", "),
+    verifying: `Verifier is weighing ${ev.source_count} sources…` }[ev.stage];
+  el.querySelector(".stage").innerHTML = msg;
+  setStep({ planning: "plan", searching: "search", verifying: "verify" }[ev.stage], "active");
+}
+
+function finishClaim(r) {
+  const el = $(`#c${r.id}`); if (!el) return;
+  const b = el.querySelector(".badge");
+  b.textContent = r.verdict.replace("_", " "); b.className = "badge"; b.style.background = COLORS[r.verdict];
+  el.querySelector(".body").innerHTML = `
+    <p class="expl">${esc(r.explanation)}</p>
+    ${r.correction && r.verdict !== "TRUE" ? `<div class="correction"><b>Correction:</b> ${esc(r.correction)}</div>` : ""}
+    <div class="meta">Confidence ${r.confidence}%</div>
+    <ul class="sources">${(r.sources || []).map((s) =>
+      `<li class="${s.cited ? "cited" : ""}">[${s.n}] <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || s.url)}</a></li>`).join("")}</ul>`;
+}
+
+function showReport(r) {
+  const s = Math.max(0, Math.min(100, Number(r.credibility_score) || 0));
+  const col = s >= 75 ? "var(--true)" : s >= 50 ? "var(--mixed)" : "var(--false)";
+  const el = $("#report"); el.style.display = "block";
+  el.innerHTML = `<div class="report-grid">
+    <div class="score" style="background: conic-gradient(${col} ${s * 3.6}deg, var(--line) 0)">
+      <div style="background:var(--panel);width:78px;height:78px;border-radius:50%;display:grid;place-items:center">
+        <div>${s}<small>credibility</small></div></div></div>
+    <div class="report-text"><h2>${esc(r.headline)}</h2><p>${esc(r.summary)}</p><p class="advice">${esc(r.advice)}</p></div>
+  </div>`;
+}
+
+$("#go").onclick = async () => {
+  const body = mode === "text" ? { text: $("#text").value } : { url: $("#url").value };
+  if (!(body.text || body.url || "").trim()) { $("#err").textContent = "Enter some text or a URL first."; return; }
+  $("#err").textContent = ""; $("#claims").innerHTML = ""; $("#report").style.display = "none";
+  document.querySelectorAll(".step").forEach((s) => setStep(s.dataset.s, null));
+  $("#go").disabled = true; $("#status").textContent = "Agents working…";
+  const t0 = Date.now();
+  try {
+    const res = await fetch("/api/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (line.startsWith("data: ")) handle(JSON.parse(line.slice(6)));
+      }
+    }
+  } catch (e) { $("#err").textContent = "Connection error: " + e.message; }
+  $("#go").disabled = false;
+  $("#status").textContent = `Finished in ${((Date.now() - t0) / 1000).toFixed(1)}s`;
+};
+
+function handle(ev) {
+  switch (ev.type) {
+    case "stage":
+      $("#status").textContent = ev.message;
+      if (ev.stage === "extract") setStep("extract", "active");
+      if (ev.stage === "report") { ["plan", "search", "verify"].forEach((s) => setStep(s, "done")); setStep("report", "active"); }
+      break;
+    case "claims":
+      setStep("extract", "done");
+      $("#claims").innerHTML = ev.claims.map(claimCard).join("");
+      break;
+    case "claim_update": updateClaim(ev); break;
+    case "claim_done": finishClaim(ev.result); break;
+    case "report": setStep("report", "done"); showReport(ev.report); break;
+    case "error": $("#err").textContent = ev.message; break;
+  }
+}
+</script>
+</body>
+</html>

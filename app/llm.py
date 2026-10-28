@@ -60,17 +60,18 @@ def _extract_json(text: str) -> Any:
     return json.loads(text[start : end + 1])
 
 
-async def chat(system: str, user: str, temperature: float = 0.2, max_tokens: int = 2048) -> str:
+async def chat(system: str, user: str, temperature: float = 0.2, max_tokens: int = 4096) -> str:
     model = await resolve_model()
     resp = await client().chat.completions.create(
         model=model,
         messages=[
-            # "/no_think" disables Nemotron's long reasoning traces for faster, structured answers
-            {"role": "system", "content": "/no_think\n" + system},
+            {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
         temperature=temperature,
         max_tokens=max_tokens,
+        # Nemotron 3 reasons by default and can spend the whole budget thinking; agents need direct JSON answers
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
     return _strip_thinking(resp.choices[0].message.content or "")
 

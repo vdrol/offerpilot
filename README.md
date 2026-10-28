@@ -40,9 +40,9 @@ Independent agents run in parallel, and progress streams live to the browser (Se
 ## Nebius + NVIDIA usage
 
 - All LLM calls go to **Nebius Token Factory**'s OpenAI-compatible endpoint (`NEBIUS_BASE_URL`) — see [`app/llm.py`](app/llm.py).
-- Default model: **`nvidia/Llama-3_3-Nemotron-Super-49B-v1_5`** (NVIDIA open model). Set `NEMOTRON_MODEL` to any
+- Default model: **`nvidia/nemotron-3-super-120b-a12b`** (NVIDIA open model). Set `NEMOTRON_MODEL` to any
   Nemotron on Token Factory; if the configured one isn't listed, the app auto-selects an available `nvidia/` model.
-- Nemotron's `/no_think` switch gives fast structured JSON; any `<think>` traces are stripped.
+- Nemotron 3 thinking is turned off per request (`chat_template_kwargs: {enable_thinking: false}`) so agents return fast, direct JSON; any `<think>` traces are stripped.
 - Optional: run the container on a **Nebius AI Cloud** VM (see Deploy).
 
 ## Setup & run

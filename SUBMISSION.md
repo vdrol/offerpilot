@@ -24,7 +24,7 @@
 - **Nebius Token Factory:** OpenAI-compatible API meant zero SDK changes — stock `openai` client with a different
   `base_url`. Running 3 agents concurrently worked without rate-limit issues at our scale. Latency per call: ___ s.
   Wish list: ___ (e.g. native JSON-schema structured output for Nemotron, clearer model-ID list, per-key usage view).
-- **NVIDIA Nemotron:** strong instruction following for structured extraction and honest gap analysis; the
-  `/no_think` toggle was essential for clean JSON. Reasoning traces occasionally leaked as `<think>` and needed stripping. ___
+- **NVIDIA Nemotron:** strong instruction following for structured extraction and honest gap analysis; `/no_think` in the system prompt did NOT disable thinking on Nemotron 3 — long outputs came back empty (whole budget spent reasoning). Passing
+  `chat_template_kwargs: {enable_thinking: false}` fixed it and cut a full run from 48s to ~13s. Worth documenting prominently. ___
 - **Tavily:** `extract` made job-link input trivial (works on Greenhouse/Lever pages); `advanced` search gave good
   company-news snippets.

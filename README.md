@@ -1,81 +1,98 @@
-# Veritas — multi-agent AI fact checker
+# OfferPilot — your multi-agent job application copilot
 
 **Track:** Best Apps and Agents · **LLM:** NVIDIA Nemotron on **Nebius Token Factory** · **Search:** Tavily
 
-Misinformation spreads faster than anyone can check it. Veritas lets anyone paste a post, article or transcript
-(or just an article URL) and get back, in under a minute, a claim-by-claim verdict with live web sources.
+Job seekers send dozens of applications, and every one deserves a tailored resume, a specific cover letter and
+interview prep — hours of work per job, so most people send the same generic resume everywhere and get ignored.
 
-## How it works
+OfferPilot does that work in about a minute. Upload your resume (PDF or text), paste a job link or description, and
+six AI agents produce:
 
-Five cooperating agents, all powered by an NVIDIA Nemotron model served on Nebius Token Factory:
+- **Fit score & gaps** — honest match score, your strengths, each gap with severity and how to close it, missing ATS keywords
+- **Tailored resume** — your own bullets rewritten for this job, before → after, with the requirement each one targets
+- **Cover letter** — specific to the company, using real recent news found on the web; editable, copy or download
+- **Interview prep** — the questions you're likely to get, with answer outlines built from *your* experience, plus smart questions to ask them
+- **Company brief** — overview, recent news, culture and talking points, with live sources
+
+It never invents experience: every agent is instructed to only rephrase and emphasise what's in your resume.
+
+## The agents
+
+All six run on an NVIDIA Nemotron model served by Nebius Token Factory.
 
 | Agent | Job |
 |---|---|
-| **Claim Extractor** | Pulls the key verifiable factual claims out of the text, made self-contained |
-| **Query Planner** | Writes targeted search queries per claim (direct + primary-source/counter-evidence) |
-| **Researcher** | Runs Tavily real-time web search, de-duplicates evidence |
-| **Verifier** | Judges each claim only against the numbered evidence → verdict, confidence, correction, citations |
-| **Editor** | Writes an overall credibility score and plain-language summary |
-
-Claims are researched and verified **in parallel**, and every step streams live to the browser (Server-Sent Events),
-so you watch the agents work.
+| **Job Analyst** | Turns a raw posting into structured requirements, responsibilities and ATS keywords |
+| **Company Researcher** | Tavily live web search → cited company brief |
+| **Fit Analyst** | Scores resume vs. job, finds gaps and how to address them |
+| **Resume Tailor** | Rewrites your bullets for this job (truthfully) |
+| **Cover Letter Writer** | Writes a specific, cliché-free letter using the research |
+| **Interview Coach** | Predicts questions incl. one on your biggest gap, with STAR answer outlines |
 
 ```
-text / URL ─► Tavily Extract ─► Claim Extractor ─┬─► Planner ─► Researcher (Tavily) ─► Verifier ─┐
-                                                 ├─► Planner ─► Researcher (Tavily) ─► Verifier ─┼─► Editor ─► report
-                                                 └─► ...                                          ┘
+job link ─► Tavily Extract ─► Job Analyst ─┬─► Company Researcher (Tavily search) ─┬─► Resume Tailor
+resume PDF ─► text ────────────────────────┴─► Fit Analyst ─────────────────────────┼─► Cover Letter Writer
+                                                                                    └─► Interview Coach
 ```
+
+Independent agents run in parallel, and progress streams live to the browser (Server-Sent Events).
 
 ## Nebius + NVIDIA usage
 
-- All LLM calls go to **Nebius Token Factory**'s OpenAI-compatible endpoint (`NEBIUS_BASE_URL`), see [`app/llm.py`](app/llm.py).
-- Default model: **`nvidia/Llama-3_3-Nemotron-Super-49B-v1_5`** (NVIDIA open model). Set `NEMOTRON_MODEL` to use any
-  other Nemotron on Token Factory. If the configured model isn't listed, the app auto-selects an available `nvidia/` model.
-- Nemotron's `/no_think` system switch is used for fast structured JSON output; any `<think>` traces are stripped.
-- Optional: deploy the container on a **Nebius AI Cloud** VM (instructions below).
+- All LLM calls go to **Nebius Token Factory**'s OpenAI-compatible endpoint (`NEBIUS_BASE_URL`) — see [`app/llm.py`](app/llm.py).
+- Default model: **`nvidia/Llama-3_3-Nemotron-Super-49B-v1_5`** (NVIDIA open model). Set `NEMOTRON_MODEL` to any
+  Nemotron on Token Factory; if the configured one isn't listed, the app auto-selects an available `nvidia/` model.
+- Nemotron's `/no_think` switch gives fast structured JSON; any `<think>` traces are stripped.
+- Optional: run the container on a **Nebius AI Cloud** VM (see Deploy).
 
 ## Setup & run
 
 Requires Python 3.9+.
 
 ```bash
-git clone <your-repo-url> veritas && cd veritas
+git clone <your-repo-url> offerpilot && cd offerpilot
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # then add NEBIUS_API_KEY and TAVILY_API_KEY
+cp .env.example .env   # add NEBIUS_API_KEY and TAVILY_API_KEY
 uvicorn app.main:app --port 8000
 ```
 
-Open http://localhost:8000, click **Try a sample**, then **Fact-check**.
+Open http://localhost:8000 → **Use sample resume** → **Use sample job** → **Build my application**.
 
-- Get a Nebius Token Factory key: https://tokenfactory.nebius.com → API keys
-- Get a Tavily key: https://app.tavily.com
-- No keys yet? `MOCK_MODE=1 uvicorn app.main:app` runs the full UI with canned responses.
-- Health check: `GET /api/health` shows the resolved model and which keys are configured.
+- Nebius Token Factory key: https://tokenfactory.nebius.com → API keys
+- Tavily key: https://app.tavily.com
+- No keys? `MOCK_MODE=1 uvicorn app.main:app` runs the full UI with canned responses.
+- `GET /api/health` shows the resolved model and which keys are configured.
 
 ## API
 
-`POST /api/check` with `{"text": "..."}` or `{"url": "https://..."}` → `text/event-stream` of events:
-`stage`, `claims`, `claim_update`, `claim_done`, `report`, `error`, `done`.
+- `POST /api/resume` (multipart `file`, PDF/TXT) → `{"text": "..."}`
+- `POST /api/run` `{"resume": "...", "job_text": "...", "job_url": "..."}` → `text/event-stream` of
+  `status`, `agent` (running/done/error), `result` (per agent), `error`, `done` events.
 
 ## Deploy
 
-**Docker (any host):**
+**Docker:**
 ```bash
-docker build -t veritas .
-docker run -p 8000:8000 --env-file .env veritas
+docker build -t offerpilot .
+docker run -p 8000:8000 --env-file .env offerpilot
 ```
 
-**Nebius AI Cloud VM:** create a small CPU VM (Ubuntu) in the Nebius console, open port 8000 (or put it behind
-Caddy/nginx), install Docker, copy the repo and `.env`, and run the two commands above.
+**Nebius AI Cloud VM:** create a small CPU VM (Ubuntu), install Docker, copy the repo and `.env`, run the two
+commands above, open port 8000 (or proxy through Caddy for HTTPS).
 
-**Render / Railway (free tier):** new Web Service from this repo, runtime Docker, add the env vars from `.env.example`.
+**Render / Railway:** new Web Service from this repo, runtime Docker, add the env vars from `.env.example`.
+
+## Privacy
+
+Resumes are processed in memory only and never stored on the server. The browser keeps your resume in
+`localStorage` so you don't have to re-upload it for the next job.
 
 ## Project layout
 
 ```
-app/main.py     FastAPI server + SSE endpoint
-app/agents.py   the five agents and the parallel orchestration
+app/main.py     FastAPI server: resume parsing + SSE endpoint
+app/agents.py   the six agents and the parallel orchestration
 app/llm.py      Nebius Token Factory / Nemotron client
 app/search.py   Tavily search + extract
 app/mock.py     offline mock responses

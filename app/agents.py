@@ -1,12 +1,13 @@
-"""Veritas multi-agent fact-checking pipeline.
+"""OfferPilot multi-agent job-application pipeline.
 
 Agents (all powered by NVIDIA Nemotron on Nebius Token Factory):
-  1. Claim Extractor  - pulls atomic, check-worthy factual claims out of the input
-  2. Query Planner    - writes targeted web-search queries for each claim
-  3. Researcher       - runs Tavily real-time search and collects evidence
-  4. Verifier         - judges each claim against the evidence, with citations
-  5. Editor           - writes the overall credibility report
-Claims are researched and verified in parallel; progress is streamed as events.
+  1. Job Analyst         - turns a raw job posting into structured requirements
+  2. Company Researcher  - Tavily live web search -> a cited company brief
+  3. Fit Analyst         - scores resume vs. job, finds gaps and how to close them
+  4. Resume Tailor       - rewrites the user's own bullets for this job (never invents facts)
+  5. Cover Letter Writer - writes a specific, non-generic cover letter
+  6. Interview Coach     - likely questions with answers drawn from the user's real experience
+Stage 1 runs first; 2+3 run in parallel; then 4, 5, 6 run in parallel. Progress streams as events.
 """
 from __future__ import annotations
 
@@ -14,8 +15,6 @@ import asyncio
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 from . import config, llm, mock, search
-
-VERDICTS = ["TRUE", "MOSTLY_TRUE", "MIXED", "MOSTLY_FALSE", "FALSE", "UNVERIFIABLE"]
 
 Emit = Callable[[dict], Awaitable[None]]
 
@@ -28,129 +27,133 @@ else:
     web_search = search.search
     web_extract = search.extract
 
+HONESTY = ("Never invent employers, titles, degrees, metrics, tools or achievements that are not in the resume. "
+           "You may rephrase, reorder and emphasise what is there.")
 
-EXTRACTOR_PROMPT = f"""You are the Claim Extractor agent in a fact-checking team.
-Extract up to {config.MAX_CLAIMS} of the most important, independently verifiable factual claims from the text.
-Rules: each claim must be self-contained (resolve pronouns, include names, dates, numbers);
-skip opinions, predictions and trivial statements; prefer claims with numbers, dates, records or attributions.
-Return: {{"claims": [{{"claim": "...", "quote": "short exact snippet from the text"}}]}}"""
+JOB_ANALYST = """You are the Job Analyst agent. Read the job posting and extract its real requirements.
+Return: {"company": "...", "role": "...", "location": "...", "seniority": "...",
+"must_have": ["skill or requirement", ...], "nice_to_have": [...], "responsibilities": ["...", ...],
+"keywords": ["ATS keywords exactly as written in the posting", ...], "summary": "2 sentences on what this job really is"}"""
 
-PLANNER_PROMPT = """You are the Query Planner agent. Write 2 concise web-search queries that would surface
-authoritative evidence to confirm OR refute the claim (one direct, one targeting primary sources or counter-evidence).
-Return: {"queries": ["...", "..."]}"""
+RESEARCHER = """You are the Company Researcher agent. Using ONLY the numbered web results, write a brief a candidate
+can use in a cover letter and interview. Cite sources like [2].
+Return: {"overview": "2-3 sentences on what the company does", "recent_news": ["fact with citation", ...],
+"culture_values": ["...", ...], "talking_points": ["specific thing the candidate could mention", ...]}"""
 
-VERIFIER_PROMPT = f"""You are the Verifier agent, a rigorous professional fact-checker.
-Judge the claim ONLY using the numbered evidence provided. Be skeptical of low-quality sources; prefer
-official, academic and major news sources. If evidence is insufficient, say UNVERIFIABLE.
-Verdict must be one of: {", ".join(VERDICTS)}.
-Return: {{"verdict": "...", "confidence": 0-100, "explanation": "2-4 sentences citing evidence like [1], [3]",
-"correction": "the accurate version of the claim, or empty string if TRUE", "citations": [1, 3]}}"""
+FIT_ANALYST = f"""You are the Fit Analyst agent, a blunt but kind senior recruiter. Compare the resume to the job.
+Return: {{"match_score": 0-100, "verdict": "one-line honest assessment",
+"strengths": ["requirement -> evidence from resume", ...],
+"gaps": [{{"requirement": "...", "severity": "high|medium|low", "how_to_address": "concrete advice"}}],
+"missing_keywords": ["job keywords absent from the resume", ...]}}
+Score honestly: 85+ = strong match, 60-84 = competitive with tailoring, below 60 = stretch. {HONESTY}"""
 
-EDITOR_PROMPT = """You are the Editor agent. Given the verified claims, write the final fact-check report.
-Return: {"credibility_score": 0-100, "headline": "one-line overall assessment",
-"summary": "3-5 sentence plain-language summary for a general reader, mentioning the most important errors",
-"advice": "one practical sentence on how the reader should treat this content"}"""
+TAILOR = f"""You are the Resume Tailor agent. Rewrite the candidate's most relevant resume bullets so they target
+this job: lead with impact, use the job's keywords where truthful, keep each bullet under 30 words. {HONESTY}
+Return: {{"headline": "a tailored 1-2 sentence professional summary",
+"bullets": [{{"original": "exact original bullet or line", "tailored": "rewritten bullet", "why": "which requirement it targets"}}],
+"skills_to_list": ["skills from the resume worth listing first for this job"]}}
+Give 5-8 bullets."""
+
+COVER = f"""You are the Cover Letter Writer agent. Write a cover letter of 250-330 words: specific, warm, confident,
+no cliches ("I am writing to express my interest", "passionate", "team player"). Open with a concrete hook that
+connects the candidate to something real about the company from the research. Use 2 specific achievements from
+the resume. {HONESTY}
+Return: {{"cover_letter": "full letter text with \\n line breaks, signed with the candidate's name if known"}}"""
+
+COACH = f"""You are the Interview Coach agent. Predict the questions this candidate is most likely to be asked for
+this job (mix technical/role-specific, behavioural, and one about their biggest gap). For each, give an answer
+outline built from the candidate's REAL experience using STAR where relevant. {HONESTY}
+Return: {{"questions": [{{"question": "...", "why_they_ask": "...", "answer_outline": "..."}}],
+"questions_to_ask_them": ["smart question referencing the company research", ...]}}
+Give 6 questions and 3 questions to ask them."""
 
 
-async def extract_claims(text: str) -> list[dict]:
-    data = await chat_json(EXTRACTOR_PROMPT, text[: config.MAX_INPUT_CHARS])
-    claims = data.get("claims", data) if isinstance(data, dict) else data
-    out = []
-    for i, c in enumerate(claims[: config.MAX_CLAIMS]):
-        if isinstance(c, str):
-            c = {"claim": c, "quote": ""}
-        if c.get("claim"):
-            out.append({"id": i, "claim": c["claim"], "quote": c.get("quote", "")})
-    return out
-
-
-async def check_claim(claim: dict, emit: Emit) -> dict:
-    cid = claim["id"]
-    await emit({"type": "claim_update", "id": cid, "stage": "planning"})
-    plan = await chat_json(PLANNER_PROMPT, f"Claim: {claim['claim']}")
-    queries = [q for q in plan.get("queries", []) if isinstance(q, str)][:2] or [claim["claim"]]
-
-    await emit({"type": "claim_update", "id": cid, "stage": "searching", "queries": queries})
-    results = await asyncio.gather(*(web_search(q) for q in queries), return_exceptions=True)
+async def research_company(job: dict) -> dict:
+    company = job.get("company") or ""
+    if not company or company.lower() in ("unknown", "n/a"):
+        return {"overview": "Company name not found in the posting.", "recent_news": [], "culture_values": [],
+                "talking_points": [], "sources": []}
+    queries = [f"{company} company news 2026", f"{company} mission values culture {job.get('role', '')}"]
+    batches = await asyncio.gather(*(web_search(q, 5) for q in queries), return_exceptions=True)
     sources, seen = [], set()
-    for batch in results:
-        if isinstance(batch, Exception):
+    for b in batches:
+        if isinstance(b, Exception):
             continue
-        for r in batch:
+        for r in b:
             if r["url"] and r["url"] not in seen:
                 seen.add(r["url"])
                 sources.append(r)
-    sources = sources[:7]
-
-    await emit({"type": "claim_update", "id": cid, "stage": "verifying", "source_count": len(sources)})
+    sources = sources[:8]
     if not sources:
-        verdict = {"verdict": "UNVERIFIABLE", "confidence": 0, "explanation": "No web evidence was found.",
-                   "correction": "", "citations": []}
-    else:
-        evidence = "\n\n".join(f"[{i + 1}] {s['title']} ({s['url']})\n{s['content']}" for i, s in enumerate(sources))
-        verdict = await chat_json(VERIFIER_PROMPT, f"Claim: {claim['claim']}\n\nEvidence:\n{evidence}")
-
-    v = str(verdict.get("verdict", "UNVERIFIABLE")).upper().replace(" ", "_")
-    cites = [int(n) for n in verdict.get("citations", []) if str(n).isdigit() and 1 <= int(n) <= len(sources)]
-    result = {
-        **claim,
-        "verdict": v if v in VERDICTS else "UNVERIFIABLE",
-        "confidence": max(0, min(100, int(verdict.get("confidence", 50) or 0))),
-        "explanation": verdict.get("explanation", ""),
-        "correction": verdict.get("correction", ""),
-        "sources": [{"n": i + 1, "title": s["title"], "url": s["url"], "cited": (i + 1) in cites}
-                    for i, s in enumerate(sources)],
-        "queries": queries,
-    }
-    await emit({"type": "claim_done", "result": result})
-    return result
+        return {"overview": "No web results found.", "recent_news": [], "culture_values": [],
+                "talking_points": [], "sources": []}
+    evidence = "\n\n".join(f"[{i + 1}] {s['title']} ({s['url']})\n{s['content']}" for i, s in enumerate(sources))
+    brief = await chat_json(RESEARCHER, f"Company: {company}\n\nWeb results:\n{evidence}")
+    brief["sources"] = [{"n": i + 1, "title": s["title"], "url": s["url"]} for i, s in enumerate(sources)]
+    return brief
 
 
-async def run_pipeline(text: str = "", url: str = "") -> AsyncIterator[dict]:
+def _brief_text(brief: dict) -> str:
+    parts = [brief.get("overview", "")]
+    for k in ("recent_news", "culture_values", "talking_points"):
+        parts += [f"- {x}" for x in brief.get(k, []) if isinstance(x, str)]
+    return "\n".join(parts)
+
+
+async def run_pipeline(resume: str, job_text: str = "", job_url: str = "") -> AsyncIterator[dict]:
     queue: asyncio.Queue = asyncio.Queue()
 
     async def emit(ev: dict) -> None:
         await queue.put(ev)
 
+    async def agent(key: str, coro: Awaitable[Any]) -> Any:
+        await emit({"type": "agent", "key": key, "state": "running"})
+        try:
+            data = await coro
+            await emit({"type": "result", "key": key, "data": data})
+            await emit({"type": "agent", "key": key, "state": "done"})
+            return data
+        except Exception as e:
+            await emit({"type": "agent", "key": key, "state": "error", "message": str(e)})
+            return None
+
     async def worker() -> None:
         try:
-            body = text
-            if url:
-                await emit({"type": "stage", "stage": "fetch", "message": f"Reading {url} with Tavily Extract"})
-                body = await web_extract(url)
-            if not body.strip():
-                raise ValueError("Nothing to fact-check — please provide text or a URL.")
-
+            if not resume.strip():
+                raise ValueError("Add your resume first (upload a PDF or paste the text).")
+            posting = job_text
+            if job_url:
+                await emit({"type": "status", "message": "Reading the job posting with Tavily Extract"})
+                posting = await web_extract(job_url)
+            if not posting.strip():
+                raise ValueError("Add a job posting (paste the description or a link).")
+            cv = resume[: config.MAX_INPUT_CHARS]
+            posting = posting[: config.MAX_INPUT_CHARS]
             model = "mock-model" if config.MOCK_MODE else await llm.resolve_model()
-            await emit({"type": "stage", "stage": "extract", "message": "Claim Extractor agent reading the text",
-                        "model": model})
-            claims = await extract_claims(body)
-            if not claims:
-                raise ValueError("No verifiable factual claims found in this text.")
-            await emit({"type": "claims", "claims": claims})
+            await emit({"type": "status", "message": f"Agents running on {model}", "model": model})
 
-            await emit({"type": "stage", "stage": "research",
-                        "message": f"Researching {len(claims)} claims in parallel"})
-            sem = asyncio.Semaphore(3)
+            job = await agent("job", chat_json(JOB_ANALYST, posting))
+            if not job:
+                raise ValueError("Couldn't understand the job posting.")
+            job_ctx = (f"JOB: {job.get('role')} at {job.get('company')}\nSummary: {job.get('summary')}\n"
+                       f"Must have: {job.get('must_have')}\nNice to have: {job.get('nice_to_have')}\n"
+                       f"Responsibilities: {job.get('responsibilities')}\nKeywords: {job.get('keywords')}")
 
-            async def guarded(c: dict) -> dict:
-                async with sem:
-                    try:
-                        return await check_claim(c, emit)
-                    except Exception as e:
-                        r = {**c, "verdict": "UNVERIFIABLE", "confidence": 0, "explanation": f"Agent error: {e}",
-                             "correction": "", "sources": [], "queries": []}
-                        await emit({"type": "claim_done", "result": r})
-                        return r
-
-            results = await asyncio.gather(*(guarded(c) for c in claims))
-
-            await emit({"type": "stage", "stage": "report", "message": "Editor agent writing the report"})
-            digest = "\n".join(
-                f"- [{r['verdict']} {r['confidence']}%] {r['claim']} — {r['explanation']}" for r in results
+            brief, fit = await asyncio.gather(
+                agent("company", research_company(job)),
+                agent("fit", chat_json(FIT_ANALYST, f"{job_ctx}\n\nRESUME:\n{cv}")),
             )
-            report = await chat_json(EDITOR_PROMPT, digest)
-            await emit({"type": "report", "report": report})
+            brief_ctx = _brief_text(brief or {})
+            gaps = "; ".join(g.get("requirement", "") for g in (fit or {}).get("gaps", []) if isinstance(g, dict))
+
+            await asyncio.gather(
+                agent("tailor", chat_json(TAILOR, f"{job_ctx}\n\nRESUME:\n{cv}")),
+                agent("cover", chat_json(COVER, f"{job_ctx}\n\nCOMPANY RESEARCH:\n{brief_ctx}\n\nRESUME:\n{cv}",
+                                         temperature=0.6)),
+                agent("coach", chat_json(COACH, f"{job_ctx}\n\nCANDIDATE GAPS: {gaps}\n\n"
+                                                f"COMPANY RESEARCH:\n{brief_ctx}\n\nRESUME:\n{cv}",
+                                         max_tokens=3000)),
+            )
         except Exception as e:
             await emit({"type": "error", "message": str(e)})
         finally:

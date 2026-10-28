@@ -1,22 +1,30 @@
 # Submission kit (not needed by the app — for you)
 
 ## Checklist
-- [ ] Add real keys to `.env`, run locally, confirm a sample check works
-- [ ] Push to a **public** GitHub repo (LICENSE + README already included)
-- [ ] Deploy (Render/Railway/Nebius VM) → working demo URL
-- [ ] Record a demo video < 3 min, upload to YouTube as **Public**
+- [ ] Add the Nebius key to `.env`, run locally, confirm the sample run works end to end
+- [ ] Push to a **public** GitHub repo (LICENSE + README included; `.env` is git-ignored)
+- [ ] Deploy (Render/Railway/Nebius VM) → working demo URL; set the keys as environment variables there
+- [ ] Record demo video < 3 min, upload to YouTube as **Public**
 - [ ] Track: **Best Apps and Agents**
 - [ ] Fill the Nebius/NVIDIA feedback form (draft below — edit with your real experience)
 - [ ] Add teammates to the submission form
 
-## Demo video script (~2:30)
-1. **0:00–0:20 Problem.** "Misinformation spreads faster than anyone can check it. Veritas fact-checks any text in under a minute."
-2. **0:20–0:45 Stack.** Show README table: 5 agents, NVIDIA Nemotron on Nebius Token Factory, Tavily search. Show `app/llm.py` base URL + model name, and `/api/health` returning the model.
-3. **0:45–1:50 Live demo.** Click *Try a sample* → *Fact-check*. Narrate the pipeline lighting up: Extractor finds claims, Planner/Researcher/Verifier run in parallel per claim, cited sources, corrections. Click a cited source.
-4. **1:50–2:20 URL mode.** Paste a real news article URL and run it.
-5. **2:20–2:30 Close.** Credibility score, open-source MIT, link to repo.
+## Demo video script (~2:40)
+1. **0:00–0:20 Problem.** "Tailoring a resume, writing a cover letter and prepping for one job takes hours. So people
+   send the same generic resume everywhere — and get ignored. OfferPilot does it in a minute."
+2. **0:20–0:45 How.** README agent table: six agents, NVIDIA Nemotron on Nebius Token Factory, Tavily live search.
+   Flash `app/llm.py` (Token Factory base URL + Nemotron model) and `/api/health`.
+3. **0:45–2:10 Live demo.** Upload a real resume PDF, paste a real job link → *Build my application*. Narrate the
+   agents lighting up (two pairs run in parallel). Walk the tabs: fit score + gaps → before/after bullets →
+   cover letter mentioning real company news → interview questions incl. one about your gap → company brief with sources.
+4. **2:10–2:30 Why it matters.** Never invents experience; resume never stored on server; works for any job link.
+5. **2:30–2:40 Close.** Open source (MIT), repo + demo links.
 
 ## Feedback draft (make it specific to what you actually saw)
-- **Nebius Token Factory:** OpenAI-compatible API meant zero SDK changes — we used the stock `openai` client with a different `base_url`. Latency for Nemotron Super 49B with `/no_think` was ___ s per call. Wish list: ___ (e.g. native JSON-schema/structured output for Nemotron, clearer model-ID list in docs, per-key usage dashboard).
-- **NVIDIA Nemotron:** strong at instruction-following for claim extraction and evidence-grounded verdicts. `/no_think` toggle was essential for structured JSON; reasoning traces occasionally leaked as `<think>` and needed stripping. ___
-- **Tavily:** `search_depth=advanced` gave high-quality snippets; `extract` made URL input trivial.
+- **Nebius Token Factory:** OpenAI-compatible API meant zero SDK changes — stock `openai` client with a different
+  `base_url`. Running 3 agents concurrently worked without rate-limit issues at our scale. Latency per call: ___ s.
+  Wish list: ___ (e.g. native JSON-schema structured output for Nemotron, clearer model-ID list, per-key usage view).
+- **NVIDIA Nemotron:** strong instruction following for structured extraction and honest gap analysis; the
+  `/no_think` toggle was essential for clean JSON. Reasoning traces occasionally leaked as `<think>` and needed stripping. ___
+- **Tavily:** `extract` made job-link input trivial (works on Greenhouse/Lever pages); `advanced` search gave good
+  company-news snippets.

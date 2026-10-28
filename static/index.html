@@ -3,193 +3,314 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Veritas Fact Checker</title>
+<title>OfferPilot</title>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6573; --line: #e3e6eb;
-    --accent: #76b900; --accent-ink: #1d2b00;
-    --true: #1f9d55; --mostly-true: #5fae2e; --mixed: #d69e00; --mostly-false: #e07a1f; --false: #d64545; --unv: #7a8394;
+    --bg: #f6f7f9; --panel: #ffffff; --ink: #14171c; --muted: #5d6573; --line: #e3e6eb; --soft: #f0f2f5;
+    --accent: #76b900; --accent-ink: #1d2b00; --good: #1f9d55; --warn: #d69e00; --bad: #d64545;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #0e1013; --panel: #171a1f; --ink: #e8eaee; --muted: #9aa2b0; --line: #2a2f37; }
+    :root { --bg: #0e1013; --panel: #171a1f; --ink: #e8eaee; --muted: #9aa2b0; --line: #2a2f37; --soft: #1f232a; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink);
     font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 80px; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 80px; }
   header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
   h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
   h1 span { color: var(--accent); }
+  h3 { margin: 0 0 10px; font-size: 15px; }
   .tag { color: var(--muted); font-size: 13px; }
-  .lede { color: var(--muted); margin: 6px 0 24px; }
+  .lede { color: var(--muted); margin: 6px 0 24px; max-width: 720px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-  .tabs button { background: none; border: 1px solid var(--line); color: var(--muted); padding: 6px 14px;
-    border-radius: 999px; cursor: pointer; font: inherit; }
-  .tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
+  .head h3 { margin: 0; }
   textarea, input[type=url] { width: 100%; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
-    border-radius: 8px; padding: 12px; font: inherit; }
-  textarea { min-height: 150px; resize: vertical; }
-  .row { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
-  .go { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 650; padding: 10px 20px;
+    border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 14px; }
+  textarea { min-height: 200px; resize: vertical; }
+  .or { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0; }
+  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
+  .file { font-size: 13px; color: var(--muted); }
+  .file input { display: none; }
+  .file label { cursor: pointer; border: 1px dashed var(--line); padding: 4px 10px; border-radius: 6px; }
+  .row { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .go { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 650; padding: 11px 22px;
     border-radius: 8px; cursor: pointer; font-size: 15px; }
   .go:disabled { opacity: .5; cursor: wait; }
-  .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font: inherit; }
-  .status { font-size: 13px; color: var(--muted); margin-left: auto; }
-  .pipeline { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 22px 0; }
-  .step { font-size: 12px; text-align: center; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--line);
-    color: var(--muted); background: var(--panel); }
-  .step b { display: block; font-size: 13px; color: var(--ink); }
-  .step.active { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
-  .step.done { border-color: var(--accent); }
-  .step.done b::after { content: " ✓"; color: var(--accent); }
-  #report { display: none; margin-bottom: 18px; }
-  .report-grid { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-  .score { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; flex: none;
-    font-size: 28px; font-weight: 700; }
-  .score small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); text-align: center; }
-  .report-text { flex: 1; min-width: 240px; }
-  .report-text h2 { margin: 0 0 6px; font-size: 19px; }
-  .report-text p { margin: 4px 0; }
-  .advice { color: var(--muted); font-style: italic; }
-  .claim { margin-bottom: 12px; }
-  .claim-head { display: flex; gap: 12px; align-items: flex-start; }
-  .claim-text { flex: 1; font-weight: 600; }
-  .badge { font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 999px; color: #fff; white-space: nowrap;
-    letter-spacing: .03em; }
-  .pending { background: var(--line); color: var(--muted); }
-  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; }
-  .expl { margin: 10px 0 6px; }
-  .correction { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 8px 0; font-size: 14px; }
-  .sources { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; }
-  .sources li { margin: 3px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sources a { color: var(--muted); }
-  .sources li.cited a { color: var(--ink); font-weight: 600; }
-  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 10px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--accent); width: 10%; transition: width .4s; }
-  .err { color: var(--false); margin-top: 12px; }
+  .status { font-size: 13px; color: var(--muted); }
+  .err { color: var(--bad); font-size: 14px; }
+  .agents { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 22px 0 14px; }
+  .agent { font-size: 12px; padding: 8px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--muted); text-align: center; }
+  .agent b { display: block; color: var(--ink); font-size: 12.5px; }
+  .agent.running { border-color: var(--accent); animation: pulse 1.2s infinite; }
+  .agent.done { border-color: var(--accent); }
+  .agent.done b::after { content: " ✓"; color: var(--accent); }
+  .agent.error { border-color: var(--bad); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); } }
+  #results { display: none; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; overflow-x: auto; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 10px 12px; font: inherit;
+    font-size: 14px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .tabs button:disabled { opacity: .4; cursor: default; }
+  .pane { display: none; } .pane.on { display: block; }
+  .fit-top { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .ring { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  .ring > div { background: var(--panel); width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 28px; font-weight: 700; text-align: center; line-height: 1.1; }
+  .ring small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  ul.clean { margin: 0; padding-left: 18px; } ul.clean li { margin: 4px 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { font-size: 12.5px; background: var(--soft); border: 1px solid var(--line); padding: 3px 9px; border-radius: 999px; }
+  .gap { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; }
+  .sev { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; color: #fff; margin-left: 6px; }
+  .sev.high { background: var(--bad); } .sev.medium { background: var(--warn); } .sev.low { background: var(--good); }
+  .bullet { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .bullet .old { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent); }
+  .bullet .new { font-weight: 550; }
+  .bullet .why { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+  .btn { background: var(--soft); border: 1px solid var(--line); color: var(--ink); padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; font: inherit; font-size: 13px; }
+  #letter { min-height: 380px; font-size: 15px; line-height: 1.6; }
+  details { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .sources a { color: var(--muted); font-size: 13px; }
   footer { margin-top: 40px; color: var(--muted); font-size: 12px; text-align: center; }
-  @media (max-width: 600px) { .pipeline { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 720px) {
+    .inputs, .grid2, .bullet { grid-template-columns: 1fr; }
+    .agents { grid-template-columns: repeat(3, 1fr); }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Veri<span>tas</span></h1>
-    <span class="tag" id="model">Nemotron on Nebius Token Factory · Tavily search</span>
+    <h1>Offer<span>Pilot</span></h1>
+    <span class="tag" id="model">NVIDIA Nemotron on Nebius Token Factory · Tavily</span>
   </header>
-  <p class="lede">Paste a post, article or transcript. A team of AI agents pulls out every factual claim, searches the live web for evidence, and tells you what's true, what's false, and why — with sources.</p>
+  <p class="lede">Stop rewriting your resume for every application. Drop in your resume and a job posting — six AI agents
+    research the company, score your fit, tailor your bullets, write the cover letter and prep you for the interview. In about a minute.</p>
 
-  <section class="panel">
-    <div class="tabs">
-      <button class="on" data-mode="text">Paste text</button>
-      <button data-mode="url">Article URL</button>
+  <section class="inputs">
+    <div class="panel">
+      <div class="head">
+        <h3>1 · Your resume</h3>
+        <span class="file"><input type="file" id="file" accept=".pdf,.txt,.md"><label for="file">Upload PDF</label></span>
+      </div>
+      <textarea id="resume" placeholder="Paste your resume text, or upload a PDF…"></textarea>
+      <div class="row" style="margin-top:8px"><span class="muted" id="resumeNote">Saved in this browser only, for next time.</span>
+        <button class="link" id="sampleResume">Use sample resume</button></div>
     </div>
-    <textarea id="text" placeholder="Paste text to fact-check…"></textarea>
-    <input id="url" type="url" placeholder="https://…" style="display:none">
-    <div class="row">
-      <button class="go" id="go">Fact-check</button>
-      <button class="link" id="sample">Try a sample</button>
-      <span class="status" id="status"></span>
+    <div class="panel">
+      <div class="head"><h3>2 · The job</h3><button class="link" id="sampleJob">Use sample job</button></div>
+      <input type="url" id="jobUrl" placeholder="Paste a job posting link (Greenhouse, Lever, company site…)">
+      <div class="or">— or paste the description —</div>
+      <textarea id="jobText" style="min-height:150px" placeholder="Paste the job description…"></textarea>
     </div>
-    <div class="err" id="err"></div>
   </section>
 
-  <div class="pipeline" id="pipeline">
-    <div class="step" data-s="extract"><b>Extractor</b>finds claims</div>
-    <div class="step" data-s="plan"><b>Planner</b>writes queries</div>
-    <div class="step" data-s="search"><b>Researcher</b>Tavily search</div>
-    <div class="step" data-s="verify"><b>Verifier</b>judges evidence</div>
-    <div class="step" data-s="report"><b>Editor</b>writes report</div>
+  <div class="row">
+    <button class="go" id="go">Build my application</button>
+    <span class="status" id="status"></span>
+    <span class="err" id="err"></span>
   </div>
 
-  <section class="panel" id="report"></section>
-  <section id="claims"></section>
+  <div class="agents" id="agents">
+    <div class="agent" data-k="job"><b>Job Analyst</b>reads posting</div>
+    <div class="agent" data-k="company"><b>Researcher</b>live web</div>
+    <div class="agent" data-k="fit"><b>Fit Analyst</b>scores you</div>
+    <div class="agent" data-k="tailor"><b>Tailor</b>resume bullets</div>
+    <div class="agent" data-k="cover"><b>Writer</b>cover letter</div>
+    <div class="agent" data-k="coach"><b>Coach</b>interview prep</div>
+  </div>
 
-  <footer>Built for the NVIDIA × Nebius hackathon · NVIDIA Nemotron via Nebius Token Factory · MIT licensed</footer>
+  <section class="panel" id="results">
+    <div class="tabs" id="tabs">
+      <button data-p="fit" disabled>Fit &amp; gaps</button>
+      <button data-p="tailor" disabled>Tailored resume</button>
+      <button data-p="cover" disabled>Cover letter</button>
+      <button data-p="coach" disabled>Interview prep</button>
+      <button data-p="company" disabled>Company brief</button>
+    </div>
+    <div class="pane" id="p-fit"></div>
+    <div class="pane" id="p-tailor"></div>
+    <div class="pane" id="p-cover"></div>
+    <div class="pane" id="p-coach"></div>
+    <div class="pane" id="p-company"></div>
+  </section>
+
+  <footer>Built for the NVIDIA × Nebius hackathon · NVIDIA Nemotron via Nebius Token Factory · Tavily search · MIT licensed</footer>
 </main>
 
 <script>
 const $ = (s) => document.querySelector(s);
-const COLORS = { TRUE: "var(--true)", MOSTLY_TRUE: "var(--mostly-true)", MIXED: "var(--mixed)",
-  MOSTLY_FALSE: "var(--mostly-false)", FALSE: "var(--false)", UNVERIFIABLE: "var(--unv)" };
-const STAGE_PCT = { queued: 8, planning: 25, searching: 55, verifying: 80 };
-const SAMPLE = `Scientists confirmed this week that the Great Wall of China is the only man-made structure visible from the Moon with the naked eye. The wall stretches over 21,000 km and was completed in a single dynasty. Meanwhile, Mount Everest, at 8,849 metres, remains the tallest mountain above sea level. Experts also remind us that humans only use 10% of their brains, and that Albert Einstein failed math in school.`;
-let mode = "text";
-
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const arr = (x) => Array.isArray(x) ? x : [];
+const store = { get(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } },
+                set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 
-document.querySelectorAll(".tabs button").forEach((b) => b.onclick = () => {
-  mode = b.dataset.mode;
-  document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
-  $("#text").style.display = mode === "text" ? "" : "none";
-  $("#url").style.display = mode === "url" ? "" : "none";
-});
-$("#sample").onclick = () => { document.querySelector('[data-mode="text"]').click(); $("#text").value = SAMPLE; };
+const SAMPLE_RESUME = `Alex Rivera
+alex.rivera@email.com · github.com/alexr
+
+EXPERIENCE
+Software Engineer, ShopLane (e-commerce startup) — 2023–present
+- Worked on the order service written in Python/Flask
+- Moved the product catalogue from MySQL to PostgreSQL, cutting query times by 40%
+- Set up Docker-based local dev environment for 12 engineers
+- Was on-call for payments; wrote runbooks that reduced incident time
+
+Software Engineering Intern, DataNest — Summer 2022
+- Built internal dashboards in React for the analytics team
+- Wrote Python scripts to clean CSV exports
+
+EDUCATION
+B.Tech Computer Science, 2023
+
+SKILLS
+Python, Flask, PostgreSQL, Docker, React, Git, AWS (EC2, S3), Redis`;
+
+const SAMPLE_JOB = `Backend Engineer — Stripe (Remote, US/Canada)
+
+About the team: The Billing team builds the APIs that let millions of businesses run subscriptions and invoicing.
+
+What you'll do
+- Design, build and operate highly available APIs in Ruby and Java
+- Own services end-to-end, including on-call
+- Improve reliability and latency of billing pipelines processing billions of dollars
+- Collaborate with product and design on new billing features
+
+Who you are
+- 2+ years building backend systems in production
+- Experience with relational databases (e.g. PostgreSQL, MySQL) at scale
+- Strong understanding of API design and distributed systems
+- You care about reliability, observability and incident response
+
+Nice to have
+- Experience with payments or financial systems
+- Kubernetes, Kafka`;
+
+$("#resume").value = store.get("op_resume");
+$("#resume").addEventListener("input", () => store.set("op_resume", $("#resume").value));
+$("#sampleResume").onclick = () => { $("#resume").value = SAMPLE_RESUME; };
+$("#sampleJob").onclick = () => { $("#jobUrl").value = ""; $("#jobText").value = SAMPLE_JOB; };
+
+$("#file").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  $("#resumeNote").textContent = "Reading " + f.name + "…";
+  const fd = new FormData(); fd.append("file", f);
+  try {
+    const r = await fetch("/api/resume", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || "Upload failed");
+    $("#resume").value = j.text; store.set("op_resume", j.text);
+    $("#resumeNote").textContent = "Loaded " + f.name + " — check the text looks right.";
+  } catch (err) { $("#resumeNote").textContent = err.message; }
+  e.target.value = "";
+};
 
 fetch("/api/health").then((r) => r.json()).then((h) => {
-  if (h.model) $("#model").textContent = `${h.model} on Nebius Token Factory · Tavily search` + (h.mock_mode ? " (mock mode)" : "");
+  if (h.model) $("#model").textContent = `${h.model} on Nebius Token Factory · Tavily` + (h.mock_mode ? " (mock mode)" : "");
 }).catch(() => {});
 
-function setStep(name, state) {
-  const el = document.querySelector(`.step[data-s="${name}"]`);
-  if (!el) return;
-  el.classList.remove("active", "done");
-  if (state) el.classList.add(state);
+function showTab(p) {
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.p === p));
+  document.querySelectorAll(".pane").forEach((x) => x.classList.toggle("on", x.id === "p-" + p));
+}
+document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => showTab(b.dataset.p));
+let firstTab = null;
+function enableTab(p) {
+  const b = $(`#tabs button[data-p="${p}"]`); b.disabled = false;
+  if (!firstTab) { firstTab = p; showTab(p); }
 }
 
-function claimCard(c) {
-  return `<article class="panel claim" id="c${c.id}">
-    <div class="claim-head"><div class="claim-text">${esc(c.claim)}</div><span class="badge pending">QUEUED</span></div>
-    ${c.quote ? `<div class="meta">“${esc(c.quote)}”</div>` : ""}
-    <div class="body"><div class="bar"><i></i></div><div class="meta stage">Waiting for an agent…</div></div>
-  </article>`;
+function copy(text, btn) {
+  navigator.clipboard.writeText(text).then(() => { const t = btn.textContent; btn.textContent = "Copied ✓"; setTimeout(() => btn.textContent = t, 1400); });
 }
 
-function updateClaim(ev) {
-  const el = $(`#c${ev.id}`); if (!el) return;
-  el.querySelector(".badge").textContent = ev.stage.toUpperCase();
-  el.querySelector(".bar i").style.width = STAGE_PCT[ev.stage] + "%";
-  const msg = { planning: "Query Planner is writing search queries…",
-    searching: "Researcher is searching: " + (ev.queries || []).map((q) => `“${esc(q)}”`).join(", "),
-    verifying: `Verifier is weighing ${ev.source_count} sources…` }[ev.stage];
-  el.querySelector(".stage").innerHTML = msg;
-  setStep({ planning: "plan", searching: "search", verifying: "verify" }[ev.stage], "active");
-}
-
-function finishClaim(r) {
-  const el = $(`#c${r.id}`); if (!el) return;
-  const b = el.querySelector(".badge");
-  b.textContent = r.verdict.replace("_", " "); b.className = "badge"; b.style.background = COLORS[r.verdict];
-  el.querySelector(".body").innerHTML = `
-    <p class="expl">${esc(r.explanation)}</p>
-    ${r.correction && r.verdict !== "TRUE" ? `<div class="correction"><b>Correction:</b> ${esc(r.correction)}</div>` : ""}
-    <div class="meta">Confidence ${r.confidence}%</div>
-    <ul class="sources">${(r.sources || []).map((s) =>
-      `<li class="${s.cited ? "cited" : ""}">[${s.n}] <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || s.url)}</a></li>`).join("")}</ul>`;
-}
-
-function showReport(r) {
-  const s = Math.max(0, Math.min(100, Number(r.credibility_score) || 0));
-  const col = s >= 75 ? "var(--true)" : s >= 50 ? "var(--mixed)" : "var(--false)";
-  const el = $("#report"); el.style.display = "block";
-  el.innerHTML = `<div class="report-grid">
-    <div class="score" style="background: conic-gradient(${col} ${s * 3.6}deg, var(--line) 0)">
-      <div style="background:var(--panel);width:78px;height:78px;border-radius:50%;display:grid;place-items:center">
-        <div>${s}<small>credibility</small></div></div></div>
-    <div class="report-text"><h2>${esc(r.headline)}</h2><p>${esc(r.summary)}</p><p class="advice">${esc(r.advice)}</p></div>
-  </div>`;
-}
+const render = {
+  job(d) {
+    $("#status").textContent = `${d.role || "Role"} at ${d.company || "company"} — researching and scoring…`;
+  },
+  fit(d) {
+    const s = Math.max(0, Math.min(100, Number(d.match_score) || 0));
+    const col = s >= 85 ? "var(--good)" : s >= 60 ? "var(--warn)" : "var(--bad)";
+    $("#p-fit").innerHTML = `
+      <div class="fit-top">
+        <div class="ring" style="background:conic-gradient(${col} ${s * 3.6}deg, var(--line) 0)"><div><div>${s}<small>match</small></div></div></div>
+        <div style="flex:1;min-width:220px"><h3 style="font-size:18px">${esc(d.verdict)}</h3>
+          <div class="muted">85+ strong · 60–84 competitive with tailoring · &lt;60 stretch</div></div>
+      </div>
+      <div class="grid2">
+        <div><h3>Where you're strong</h3><ul class="clean">${arr(d.strengths).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+        <div><h3>Gaps &amp; how to close them</h3>${arr(d.gaps).map((g) => `<div class="gap"><b>${esc(g.requirement)}</b>
+          <span class="sev ${esc(g.severity)}">${esc(g.severity)}</span><div class="muted" style="margin-top:4px">${esc(g.how_to_address)}</div></div>`).join("")}</div>
+      </div>
+      <h3 style="margin-top:16px">Keywords from the job missing in your resume</h3>
+      <div class="chips">${arr(d.missing_keywords).map((k) => `<span class="chip">${esc(k)}</span>`).join("") || '<span class="muted">None — nice.</span>'}</div>`;
+    enableTab("fit");
+  },
+  tailor(d) {
+    const all = [d.headline, ...arr(d.bullets).map((b) => "• " + b.tailored)].join("\n");
+    $("#p-tailor").innerHTML = `
+      <div class="head"><h3>Tailored summary</h3><button class="btn" id="copyBullets">Copy all</button></div>
+      <p style="font-weight:550">${esc(d.headline)}</p>
+      <h3 style="margin-top:16px">Bullets — before → after</h3>
+      ${arr(d.bullets).map((b) => `<div class="bullet"><div class="old">${esc(b.original)}</div><div class="new">${esc(b.tailored)}</div>
+        <div class="why">Targets: ${esc(b.why)}</div></div>`).join("")}
+      <h3 style="margin-top:16px">List these skills first</h3>
+      <div class="chips">${arr(d.skills_to_list).map((k) => `<span class="chip">${esc(k)}</span>`).join("")}</div>`;
+    $("#copyBullets").onclick = (e) => copy(all, e.target);
+    enableTab("tailor");
+  },
+  cover(d) {
+    $("#p-cover").innerHTML = `
+      <div class="head"><h3>Your cover letter <span class="muted">(edit freely)</span></h3>
+        <span><button class="btn" id="copyLetter">Copy</button> <button class="btn" id="dlLetter">Download .txt</button></span></div>
+      <textarea id="letter"></textarea>`;
+    $("#letter").value = d.cover_letter || "";
+    $("#copyLetter").onclick = (e) => copy($("#letter").value, e.target);
+    $("#dlLetter").onclick = () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([$("#letter").value], { type: "text/plain" }));
+      a.download = "cover-letter.txt"; a.click();
+    };
+    enableTab("cover");
+  },
+  coach(d) {
+    $("#p-coach").innerHTML = `<h3>Questions you'll likely get</h3>
+      ${arr(d.questions).map((q, i) => `<details ${i === 0 ? "open" : ""}><summary>${esc(q.question)}</summary>
+        <p class="muted">Why they ask: ${esc(q.why_they_ask)}</p><p>${esc(q.answer_outline)}</p></details>`).join("")}
+      <h3 style="margin-top:16px">Smart questions to ask them</h3>
+      <ul class="clean">${arr(d.questions_to_ask_them).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+    enableTab("coach");
+  },
+  company(d) {
+    const list = (t, xs) => arr(xs).length ? `<h3 style="margin-top:14px">${t}</h3><ul class="clean">${arr(xs).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+    $("#p-company").innerHTML = `<p>${esc(d.overview)}</p>
+      ${list("Recent news", d.recent_news)}${list("Culture &amp; values", d.culture_values)}${list("Mention these in your letter / interview", d.talking_points)}
+      ${arr(d.sources).length ? `<h3 style="margin-top:14px">Sources (live via Tavily)</h3><ol class="sources" style="padding-left:20px;margin:0">
+        ${arr(d.sources).map((s) => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title || s.url)}</a></li>`).join("")}</ol>` : ""}`;
+    enableTab("company");
+  },
+};
 
 $("#go").onclick = async () => {
-  const body = mode === "text" ? { text: $("#text").value } : { url: $("#url").value };
-  if (!(body.text || body.url || "").trim()) { $("#err").textContent = "Enter some text or a URL first."; return; }
-  $("#err").textContent = ""; $("#claims").innerHTML = ""; $("#report").style.display = "none";
-  document.querySelectorAll(".step").forEach((s) => setStep(s.dataset.s, null));
-  $("#go").disabled = true; $("#status").textContent = "Agents working…";
+  const body = { resume: $("#resume").value, job_text: $("#jobText").value, job_url: $("#jobUrl").value };
+  if (!body.resume.trim()) { $("#err").textContent = "Add your resume first."; return; }
+  if (!body.job_text.trim() && !body.job_url.trim()) { $("#err").textContent = "Add a job link or description."; return; }
+  $("#err").textContent = ""; firstTab = null;
+  document.querySelectorAll(".agent").forEach((a) => a.className = "agent");
+  document.querySelectorAll("#tabs button").forEach((b) => { b.disabled = true; b.classList.remove("on"); });
+  document.querySelectorAll(".pane").forEach((p) => { p.innerHTML = ""; p.classList.remove("on"); });
+  $("#results").style.display = "block";
+  $("#go").disabled = true; $("#status").textContent = "Starting agents…";
   const t0 = Date.now();
   try {
-    const res = await fetch("/api/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
     while (true) {
       const { value, done } = await reader.read(); if (done) break;
@@ -200,27 +321,19 @@ $("#go").onclick = async () => {
         if (line.startsWith("data: ")) handle(JSON.parse(line.slice(6)));
       }
     }
-  } catch (e) { $("#err").textContent = "Connection error: " + e.message; }
+    $("#status").textContent = `Done in ${((Date.now() - t0) / 1000).toFixed(0)}s`;
+  } catch (e) { $("#err").textContent = "Connection error: " + e.message; $("#status").textContent = ""; }
   $("#go").disabled = false;
-  $("#status").textContent = `Finished in ${((Date.now() - t0) / 1000).toFixed(1)}s`;
 };
 
 function handle(ev) {
-  switch (ev.type) {
-    case "stage":
-      $("#status").textContent = ev.message;
-      if (ev.stage === "extract") setStep("extract", "active");
-      if (ev.stage === "report") { ["plan", "search", "verify"].forEach((s) => setStep(s, "done")); setStep("report", "active"); }
-      break;
-    case "claims":
-      setStep("extract", "done");
-      $("#claims").innerHTML = ev.claims.map(claimCard).join("");
-      break;
-    case "claim_update": updateClaim(ev); break;
-    case "claim_done": finishClaim(ev.result); break;
-    case "report": setStep("report", "done"); showReport(ev.report); break;
-    case "error": $("#err").textContent = ev.message; break;
+  if (ev.type === "status") $("#status").textContent = ev.message;
+  else if (ev.type === "agent") {
+    const el = $(`.agent[data-k="${ev.key}"]`); if (el) el.className = "agent " + ev.state;
+    if (ev.state === "error") $("#err").textContent = `${ev.key} agent failed: ${ev.message}`;
   }
+  else if (ev.type === "result" && render[ev.key] && ev.data) render[ev.key](ev.data);
+  else if (ev.type === "error") $("#err").textContent = ev.message;
 }
 </script>
 </body>
